@@ -1,5 +1,5 @@
 # 1.Extract Embedding
- - Download model [Github](https://drive.google.com/drive/folders/1pwQ3H4aJ8a6yyJHZkTwtjcL4wYWQb7bn) and paste to folder ```model``` 
+ - Download model [here](https://drive.google.com/drive/folders/1pwQ3H4aJ8a6yyJHZkTwtjcL4wYWQb7bn) and paste to folder ```model``` 
 same folder with file extract.py.
  - Create folder of images,example :
     - create :
