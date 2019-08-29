@@ -4,14 +4,17 @@ import cv2,time
 import numpy as np
 from mtcnn.mtcnn import MTCNN
 
-def _load_():
+from collections import Counter
+from argparse import ArgumentParser
+
+def _load_(folder="model"):
     facenet_model,mtcnn_model,image_size,encoder,clf = None,None,None,None,None
     # try:
-    facenet_model = load_model("model/facenet_keras.h5")
+    facenet_model = load_model(folder+"/facenet_keras.h5")
     mtcnn_model = MTCNN(scale_factor=0.8,min_face_size=70,steps_threshold=[0.8]*3)
     image_size = 160
-    encoder = pickle.load(open("model/encoder.pickle","rb"))
-    clf = pickle.load(open("model/svc_model.pickle","rb"))
+    encoder = pickle.load(open(folder+"/encoder.pickle","rb"))
+    clf = pickle.load(open(folder+"/svc_model.pickle","rb"))
     
     return facenet_model,mtcnn_model,image_size,encoder,clf
     # except:
@@ -59,7 +62,7 @@ def get_bounding_boxes(mtcnn_detech):
     points = [kp["left_eye"],kp["right_eye"],kp["nose"],kp["mouth_left"],kp["mouth_right"]]
     return box,score,points
 
-def cropped(img,box,margin=10):
+def cropped(img,box,image_size=160,margin=10):
 
     h0,w0 = img.shape[:2]
     x,y,w,h = box
@@ -88,50 +91,74 @@ def infer(le, clf,facenet,aligned_images):
     return pred,proba
 
 
-facenet_model,mtcnn_model,image_size,encoder,clf = _load_()
 
-cap = cv2.VideoCapture(0)
-wd = cv2.namedWindow("",cv2.WINDOW_FREERATIO)
+def main(folder,threshold=0.4):
+    # parser = ArgumentParser(description='Demo Camera')
 
-i = 0
-n_false = 0
-n = 200
+    # parser.add_argument('threshold', type=float,help='threshold for classification')
 
-while cap.isOpened():
-    ret,img = cap.read()
-    copy = img.copy()
-    if ret:
-        faces = mtcnn_model.detect_faces(img)
-        if len(faces) > 0:
+    # args = parser.parse_args()
+    # threshold = args.threshold
+    if threshold == "":
+        threshold = 0.4
+    else:
+        threshold = float(threshold)
+    # parser.add_argument('output', type=str,help='output_folder of embddings')
 
-            # i+=1
-            box,mtcnn_score,_ = get_bounding_boxes(faces[0]) 
-            print("mtcnn score : %.2f"%mtcnn_score)    
 
-            x,y,w,h = box
-            
-            crop = cropped(img, box,margin=10)
-            pred,proba = infer(encoder,clf,facenet_model,np.array([crop]))
-            pred,score = pred[0],proba[0].max()
+    facenet_model,mtcnn_model,image_size,encoder,clf = _load_(folder)
 
-            if score > 0.4:
-                # if pred != "ManVanNam":
-                #     n_false+=1
-                print(pred , score)
-                cv2.putText(copy,pred + ",%.2f"%score,(x,y),cv2.FONT_HERSHEY_COMPLEX,1,(0,255,255),2)
-                cv2.rectangle(copy,(x,y),(x+w,y+h),(0,255,0),2)
+    print("image_size : ",image_size)
 
-        cv2.imshow(wd,copy)
+    cap = cv2.VideoCapture(0)
+    wd = cv2.namedWindow("",cv2.WINDOW_FREERATIO)
 
-        k = cv2.waitKey(20)
-        if k == ord("q"):
+    i = 0
+    preds = []
+    # n_false = 0
+    # n = 200
+
+    while cap.isOpened():
+        ret,img = cap.read()
+        img = cv2.resize(img,(320,240),cv2.INTER_CUBIC)
+        copy = img.copy()
+        if ret:
+            faces = mtcnn_model.detect_faces(img)
+            if len(faces) > 0:
+
+                box,mtcnn_score,_ = get_bounding_boxes(faces[0]) 
+                print("mtcnn score : %.2f"%mtcnn_score)    
+
+                x,y,w,h = box
+                
+                crop = cropped(img, box,margin=10,image_size=image_size)
+                pred,proba = infer(encoder,clf,facenet_model,np.array([crop]))
+                pred,score = pred[0],proba[0].max()
+
+                if score > threshold:
+                    preds.append(pred)
+                    # if pred != "ManVanNam":
+                    #     n_false+=1
+                    print(pred , score)
+                    cv2.putText(copy,pred + ",%.2f"%score,(x,y),cv2.FONT_HERSHEY_COMPLEX,0.5,(0,255,255),1)
+                    cv2.rectangle(copy,(x,y),(x+w,y+h),(0,255,0),2)
+
+            cv2.imshow(wd,copy)
+
+            k = cv2.waitKey(20)
+            if k == ord("q"):
+                break
+        else:
             break
 
-    else:
-        break
+    print("n:%d"%len(preds))
+    print(Counter(preds))
 
-# print("score : %.2f"%(1-n_false/n))
+    cap.release()
+    cv2.destroyAllWindows()
 
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    folder = input("Enter fodler of model : ")
+    threshold = input("Enter threshold : ")
+    main(folder,threshold)
 

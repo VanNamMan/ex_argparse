@@ -61,7 +61,6 @@ def load_and_align_images(filepaths, margin):
     imgs = []
     for filepath in filepaths:
         img = cv2.imread(filepath)
-
         faces = face_mtcnn.detect_faces(img)
         if len(faces) > 0:
             box,score,points = get_bounding_boxes(faces[0])
@@ -72,11 +71,14 @@ def load_and_align_images(filepaths, margin):
             boxs.append(box)
             imgs.append(img)
             
+
     return np.array(aligned_images),boxs,imgs
 
 
 def calc_embs(filepaths, margin=10, batch_size=1):
     aligned_images , boxs , imgs = load_and_align_images(filepaths, margin)
+    if len(aligned_images) == 0:
+        return None,None,None
     aligned_images = prewhiten(aligned_images)
     pd = []
     for start in range(0, len(aligned_images), batch_size):
@@ -88,30 +90,42 @@ def calc_embs(filepaths, margin=10, batch_size=1):
 def main():
     parser = argparse.ArgumentParser(description='Process extract embedding image.')
 
-    parser.add_argument('image_path', type=str,help='folder of images')
-    parser.add_argument('output', type=str,help='output_folder of embddings')
+    # parser.add_argument('image_path', type=str,help='folder of images')
+    # parser.add_argument('output', type=str,help='output_folder of embddings')
     # parser.add_argument('-m','--mode', type=str,help='output_folder of embddings')
 
     args = parser.parse_args()
-    image_path = args.image_path
-    output_path = args.output
-
+    # image_path = args.image_path
+    output_path = "embeddings"
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
     # mode = args.mode
 
-    for folder in os.listdir(image_path):
+    while True:
+        image_path = input("Enter images folder...")
+        if image_path == "":
+            msg = input("Do you want to quit(y/n)?")
+            if msg == "y":
+                break
+            elif msg == "n":
+                image_path = input("Enter images folder...")
+            else:
+                break
+        for folder in os.listdir(image_path):
 
-        sub = image_path+"/"+folder
-        label = os.path.basename(sub)
+            sub = image_path+"/"+folder
+            label = os.path.basename(sub)
 
-        filepaths = [os.path.join(sub,f) for f in os.listdir(sub)]
+            filepaths = [os.path.join(sub,f) for f in os.listdir(sub)]
 
-        print(label)
-        embds,_,_ = calc_embs(filepaths,margin=10)
+            print(label)
+            embds,_,_ = calc_embs(filepaths,margin=10)
 
-        print(embds.shape)
+            if embds is not None:
+                print(embds.shape)
 
-        with open(os.path.join(output_path,label+".pickle"),"wb") as pkl:
-            pickle.dump(embds,pkl)
+                with open(os.path.join(output_path,label+".pickle"),"wb") as pkl:
+                    pickle.dump(embds,pkl)
 
 
 if __name__ == "__main__":
