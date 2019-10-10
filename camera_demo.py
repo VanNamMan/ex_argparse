@@ -7,15 +7,32 @@ from mtcnn.mtcnn import MTCNN
 from collections import Counter
 from argparse import ArgumentParser
 
-def _load_(folder="model"):
+
+def readLines(filename):
+    lines = []
+    with open(filename,"r") as f:
+        lines = f.readlines()
+        f.close()
+
+    return lines
+
+def _load_(type_model="svm"):
+
     facenet_model,mtcnn_model,image_size,encoder,clf = None,None,None,None,None
     # try:
-    facenet_model = load_model(folder+"/facenet_keras.h5")
-    mtcnn_model = MTCNN(scale_factor=0.8,min_face_size=70,steps_threshold=[0.8]*3)
+    facenet_model = load_model("facenet_keras.h5")
+    mtcnn_model = MTCNN(scale_factor=0.79,min_face_size=20,steps_threshold=[0.7]*3)
     image_size = 160
-    encoder = pickle.load(open(folder+"/encoder.pickle","rb"))
-    clf = pickle.load(open(folder+"/svc_model.pickle","rb"))
+
+    if type_model == "svm":
+        encoder = pickle.load(open("model/encoder.pickle","rb"))
+        clf = pickle.load(open("model/svc_model.pickle","rb"))
     
+    elif type_model == "tf":
+        encoder = readLines("model/labels.txt")
+        clf = load_model("model/tfmodel.h5")
+        print(clf.summary())
+
     return facenet_model,mtcnn_model,image_size,encoder,clf
     # except:
     #     return [None]*5
@@ -77,7 +94,7 @@ def cropped(img,box,image_size=160,margin=10):
     aligned = cv2.resize(cropped, (image_size, image_size),interpolation=cv2.INTER_CUBIC)
     return aligned
 
-def infer(le, clf,facenet,aligned_images):
+def infer(le, clf,facenet,aligned_images,type_model="svm"):
     """
     le : labels Encoder
     clf : svc model
@@ -86,27 +103,41 @@ def infer(le, clf,facenet,aligned_images):
     """
     embs = calc_embs(facenet,aligned_images)
 
-    pred = le.inverse_transform(clf.predict(embs))
-    proba = clf.predict_proba(embs)
+    if type_model == "svm":
+        pred = le.inverse_transform(clf.predict(embs))
+        proba = clf.predict_proba(embs)
+    elif type_model == "tf":
+        proba = clf.predict(embs)
+        pred = [le[proba.argmax()]]
     return pred,proba
 
 
 
-def main(folder,threshold=0.4):
-    # parser = ArgumentParser(description='Demo Camera')
+def main():
+    parser = ArgumentParser(description='Demo Camera')
 
-    # parser.add_argument('threshold', type=float,help='threshold for classification')
+    parser.add_argument('-c','--camera', type=int,help='id Camera , if == -1 => no use camera')
+    # parser.add_argument('-f','--filename', type=str,help='image path , use if id camera == -1')
 
-    # args = parser.parse_args()
-    # threshold = args.threshold
-    if threshold == "":
+    parser.add_argument('-t','--threshold', type=float,help='threshold for classification')
+    parser.add_argument('-m','--model', type=str,help='folder of SVC model')
+
+    args = parser.parse_args()
+    idCamera = args.camera
+    # filename = args.filename
+
+    threshold = args.threshold
+    type_model = args.model
+
+
+    if threshold is None:
         threshold = 0.4
     else:
         threshold = float(threshold)
     # parser.add_argument('output', type=str,help='output_folder of embddings')
 
 
-    facenet_model,mtcnn_model,image_size,encoder,clf = _load_(folder)
+    facenet_model,mtcnn_model,image_size,encoder,clf = _load_(type_model)
 
     print("image_size : ",image_size)
 
@@ -118,15 +149,59 @@ def main(folder,threshold=0.4):
     # n_false = 0
     # n = 200
 
-    while cap.isOpened():
-        ret,img = cap.read()
-        img = cv2.resize(img,(320,240),cv2.INTER_CUBIC)
-        copy = img.copy()
-        if ret:
-            faces = mtcnn_model.detect_faces(img)
-            if len(faces) > 0:
+    if idCamera >= 0:
 
-                box,mtcnn_score,_ = get_bounding_boxes(faces[0]) 
+        while cap.isOpened():
+            ret,img = cap.read()
+            img = cv2.resize(img,(320,240),cv2.INTER_CUBIC)
+            copy = img.copy()
+            if ret:
+                faces = mtcnn_model.detect_faces(img)
+                if len(faces) > 0:
+
+                    box,mtcnn_score,_ = get_bounding_boxes(faces[0]) 
+                    print("mtcnn score : %.2f"%mtcnn_score)    
+
+                    x,y,w,h = box
+                    
+                    crop = cropped(img, box,margin=10,image_size=image_size)
+
+                    pred,proba = infer(encoder,clf,facenet_model,np.array([crop]),type_model)
+                    pred,score = pred[0],proba[0].max()
+
+                    if score > threshold:
+                        preds.append(pred)
+                        # if pred != "ManVanNam":
+                        #     n_false+=1
+                        print(pred , score)
+                        cv2.putText(copy,pred + ",%.2f"%score,(x,y),cv2.FONT_HERSHEY_COMPLEX,0.5,(0,255,255),1)
+                        cv2.rectangle(copy,(x,y),(x+w,y+h),(0,255,0),2)
+
+                cv2.imshow(wd,copy)
+
+                k = cv2.waitKey(20)
+                if k == ord("q"):
+                    break
+            else:
+                break
+
+        print("n:%d"%len(preds))
+        print(Counter(preds))
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+    elif idCamera == -1:
+        while True:
+            filename = input("Enter your image path : ")
+            if filename == "":
+                break
+            img = cv2.imread(filename)
+            copy = img.copy()
+            faces = mtcnn_model.detect_faces(img)
+            for face in faces:
+
+                box,mtcnn_score,_ = get_bounding_boxes(face) 
                 print("mtcnn score : %.2f"%mtcnn_score)    
 
                 x,y,w,h = box
@@ -144,21 +219,10 @@ def main(folder,threshold=0.4):
                     cv2.rectangle(copy,(x,y),(x+w,y+h),(0,255,0),2)
 
             cv2.imshow(wd,copy)
-
-            k = cv2.waitKey(20)
-            if k == ord("q"):
-                break
-        else:
-            break
-
-    print("n:%d"%len(preds))
-    print(Counter(preds))
-
-    cap.release()
-    cv2.destroyAllWindows()
+            k = cv2.waitKey()
+    else:
+        pass
 
 if __name__ == "__main__":
-    folder = input("Enter fodler of model : ")
-    threshold = input("Enter threshold : ")
-    main(folder,threshold)
+    main()
 

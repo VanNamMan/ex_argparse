@@ -2,14 +2,27 @@ import argparse
 from keras.models import load_model
 import os
 import pickle
-from mtcnn.mtcnn import MTCNN
+# from mtcnn.mtcnn import MTCNN
 import cv2
 import numpy as np
 
 image_size = 160
-model = load_model("model/facenet_keras.h5")
-face_mtcnn = MTCNN(steps_threshold=[0.7]*3
-                ,scale_factor=0.8,min_face_size=80)
+model = load_model("facenet_keras.h5")
+
+# face_mtcnn = MTCNN(steps_threshold=[0.7]*3
+#                 ,scale_factor=0.8,min_face_size=80)
+
+DNN = "TF"
+if DNN == "CAFFE":
+    modelFile = "model_face_detech/res10_300x300_ssd_iter_140000_fp16.caffemodel"
+    configFile = "model_face_detech/deploy.prototxt"
+    net = cv2.dnn.readNetFromCaffe(configFile, modelFile)
+else:
+    modelFile = "model_face_detech/opencv_face_detector_uint8.pb"
+    configFile = "model_face_detech/opencv_face_detector.pbtxt"
+    net = cv2.dnn.readNetFromTensorflow(modelFile, configFile)
+
+conf_threshold = 0.7
 
 
 def prewhiten(x):
@@ -75,8 +88,47 @@ def load_and_align_images(filepaths, margin):
     return np.array(aligned_images),boxs,imgs
 
 
+def detectFaceOpenCVDnn(net, frame):
+    frameOpencvDnn = frame.copy()
+    frameHeight = frameOpencvDnn.shape[0]
+    frameWidth = frameOpencvDnn.shape[1]
+    blob = cv2.dnn.blobFromImage(frameOpencvDnn, 1.0, (300, 300), [104, 117, 123], False, False)
+
+    net.setInput(blob)
+    detections = net.forward()
+    bboxes = []
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > conf_threshold:
+            x1 = int(detections[0, 0, i, 3] * frameWidth)
+            y1 = int(detections[0, 0, i, 4] * frameHeight)
+            x2 = int(detections[0, 0, i, 5] * frameWidth)
+            y2 = int(detections[0, 0, i, 6] * frameHeight)
+            bboxes.append([x1, y1, x2, y2])
+
+    return bboxes
+    
+def dnn_align_images(filepaths, margin):
+    aligned_images = []
+    boxs = []
+    imgs = []
+    for filepath in filepaths:
+        img = cv2.imread(filepath)
+        bboxes = detectFaceOpenCVDnn(net, img)
+        for box in bboxes:
+            # box,score,points = get_bounding_boxes(face)
+            (x, y, w, h) = box
+            aligned = cropped(img,box,margin=margin)
+            aligned_images.append(aligned)
+            # boxs.append(box)
+            # imgs.append(img)
+
+    return np.array(aligned_images),boxs,imgs
+
+
 def calc_embs(filepaths, margin=10, batch_size=1):
-    aligned_images , boxs , imgs = load_and_align_images(filepaths, margin)
+    # aligned_images , boxs , imgs = load_and_align_images(filepaths, margin)
+    aligned_images , boxs , imgs = dnn_align_images(filepaths, margin)
     if len(aligned_images) == 0:
         return None,None,None
     aligned_images = prewhiten(aligned_images)
