@@ -156,6 +156,8 @@ def main():
             img = cv2.resize(img,(320,240),cv2.INTER_CUBIC)
             copy = img.copy()
             if ret:
+
+                start_time = time.time()
                 faces = mtcnn_model.detect_faces(img)
                 if len(faces) > 0:
 
@@ -176,7 +178,7 @@ def main():
                         print(pred , score)
                         cv2.putText(copy,pred + ",%.2f"%score,(x,y),cv2.FONT_HERSHEY_COMPLEX,0.5,(0,255,255),1)
                         cv2.rectangle(copy,(x,y),(x+w,y+h),(0,255,0),2)
-
+                print("inference time : %.2f"%(time.time()-start_time))                    
                 cv2.imshow(wd,copy)
 
                 k = cv2.waitKey(20)

@@ -1,0 +1,2 @@
+python camera_demo.py -c 0 -t 0.5 -m tf
+pause

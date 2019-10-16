@@ -1,5 +1,7 @@
 # 1.Extract Embedding
- - Download model [here](https://drive.google.com/drive/folders/1pwQ3H4aJ8a6yyJHZkTwtjcL4wYWQb7bn) and paste to folder ```model``` 
+"python camera_demo.py -c 0 -t 0.5 -m tf"
+# 1.Extract Embedding
+ - Download model [here](https://drive.google.com/drive/folders/1pwQ3H4aJ8a6yyJHZkTwtjcL4wYWQb7bn) and paste to folder
 same folder with file extract.py.
  - Create folder of images,example :
     - create :
